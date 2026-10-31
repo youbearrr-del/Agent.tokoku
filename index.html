@@ -227,8 +227,8 @@ ol.how{margin-left:20px;display:grid;gap:6px;color:var(--muted)}
       <div class="panel">
         <h2>Cara kerja komisi</h2>
         <ol class="how">
-          <li>Pelanggan memesan lewat WhatsApp-mu, kamu terima pembayaran langsung.</li>
-          <li>Catat pesanan di tab Pesanan dan tandai lunas setelah uang masuk.</li>
+          <li>Pelanggan membuat pesanan melalui checkout toko Tokoku.</li>
+          <li>Pesanan dan nilai komisi tercatat otomatis. Admin Tokoku mengonfirmasi pembayaran.</li>
           <li id="howPct">Komisi toko dihitung dari penjualan lunas.</li>
           <li>Setor komisi ke Tokoku. Admin menandai “Komisi diterima” dan angka di atas berkurang.</li>
         </ol>
@@ -259,8 +259,8 @@ ol.how{margin-left:20px;display:grid;gap:6px;color:var(--muted)}
 
     <div id="tab-pesanan" class="hidden">
       <div class="panel">
-        <h2>Catat pesanan</h2>
-        <form id="oForm">
+        <h2>Pesanan Tokoku</h2><p class="muted">Pesanan dari checkout toko utama tercatat otomatis. Pembayaran dan komisi dikonfirmasi admin Tokoku.</p>
+        <form id="oForm" hidden>
           <label>Nama pelanggan<input id="oName" required maxlength="60"></label>
           <label>No. WhatsApp<input id="oPhone" type="tel" placeholder="08123456789"></label>
           <label>Produk<select id="oProd"></select></label>
@@ -528,12 +528,10 @@ function renderHead(){
 /* ---------- Link alternatif & bagikan ---------- */
 function renderAltLinks(main){
   const box = $("altLinks"); if (!box) return; box.textContent = "";
-  const slug = encodeURIComponent(me.slug), wa = String(me.wa || "").replace(/\D/g, "");
-  const promo = "Belanja produk " + (me.name || "kami") + " di Tokoku: ";
+  const slug = encodeURIComponent(me.slug);
   const rows = [
-    ["Link singkat (tahan dibagikan)", pageUrl("tokoku.html") + "?agen=" + slug, "Dipakai kalau link utama gagal terbuka di aplikasi tertentu."],
-    ["Link chat WhatsApp", wa ? "https://wa.me/" + wa + "?text=" + encodeURIComponent("Halo " + (me.name || "") + ", saya mau tanya produk.") : "", "Pembeli langsung masuk ke chat WhatsApp-mu. Cocok untuk bio dan story."]
-  ].filter(r => r[1]);
+    ["Link tokomu (transaksi tercatat)", pageUrl("tokoku.html") + "?agen=" + slug, "Bagikan tautan ini agar pesanan tercatat pada akun mitramu."]
+  ];
   rows.forEach(([lb, url, tip]) => {
     const w = el("div"), l = el("div", "muted", lb); l.style.cssText = "font-weight:600;font-size:.88rem;margin-bottom:4px";
     const lk = el("div", "linkbox"), c = el("code", "", url);
@@ -641,7 +639,7 @@ function renderProducts(){
 }
 
 /* ---------- Pesanan ---------- */
-const STATUS = ["Menunggu Pembayaran", "Diproses", "Dikirim", "Selesai", "Batal"];
+const STATUS = ["Diproses", "Dikirim", "Selesai"];
 function fillProdSelect(){
   const s = $("oProd"), v = s.value; s.textContent = "";
   const o0 = el("option", "", "Produk lain (tulis di catatan)"); o0.value = ""; s.append(o0);
@@ -650,23 +648,13 @@ function fillProdSelect(){
 }
 function autoTotal(){ const p = items[$("oProd").value]; if (p) $("oTotal").value = p.price * (Number($("oQty").value) || 1); }
 $("oProd").onchange = autoTotal; $("oQty").oninput = autoTotal;
-$("oForm").onsubmit = async e => {
-  e.preventDefault();
-  const pid = $("oProd").value, p = items[pid], qty = Number($("oQty").value) || 1;
-  const d = { agentId: me.uid, agentName: me.name, name: $("oName").value.trim(), phone: $("oPhone").value.trim(), pid, prod: p ? p.name : "Produk lain", qty, total: Number($("oTotal").value) || 0, note: $("oNote").value.trim(),
-    status: "Menunggu Pembayaran", paid: false, commissionPct: pctNow(), commissionPaid: false, createdAt: serverTimestamp() };
-  try { await addDoc(collection(db, "agentOrders"), d); $("oForm").reset(); $("oQty").value = 1; toast("Pesanan disimpan"); }
-  catch (err) { toast("Gagal menyimpan: " + (err.code || err.message)); }
-};
+$("oForm").onsubmit = e => { e.preventDefault(); toast("Pesanan dibuat melalui checkout Tokoku."); };
 async function stockAdj(o, dir){ const p = items[o.pid]; if (o.pid && p && p.stock != null) { try { await updateDoc(doc(db, "products", o.pid), { stock: increment(dir * (o.qty || 1)) }); } catch (e) {} } }
-async function markPaid(id){ const o = orders[id]; if (!o || o.paid) return; try { await updateDoc(doc(db, "agentOrders", id), { paid: true, paidAt: serverTimestamp(), status: "Diproses" }); await stockAdj(o, -1); toast("Pesanan ditandai lunas"); } catch (err) { toast("Gagal: " + (err.code || err.message)); } }
-async function undoPaid(id, st){ const o = orders[id]; if (!o || !o.paid) return; try { await updateDoc(doc(db, "agentOrders", id), { paid: false, status: st }); await stockAdj(o, 1); toast(st === "Batal" ? "Pesanan dibatalkan" : "Status lunas dibatalkan"); } catch (err) { toast("Gagal: " + (err.code || err.message)); } }
 async function setStatus(id, st){
-  const o = orders[id]; if (!o) return;
-  if (o.commissionPaid) { toast("Komisi sudah diterima admin, pesanan terkunci"); renderOrders(); return; }
-  if (st === "Batal" || st === "Menunggu Pembayaran") { if (o.paid) { if (confirm("Pesanan sudah lunas. Batalkan status lunas dan kembalikan stok?")) await undoPaid(id, st); else renderOrders(); return; } }
-  else if (!o.paid) { toast("Tandai lunas dulu"); renderOrders(); return; }
-  try { await updateDoc(doc(db, "agentOrders", id), { status: st }); toast("Status diubah: " + st); } catch (err) { toast("Gagal: " + (err.code || err.message)); }
+  const o = orders[id];
+  if (!o || !o.paid || o.commissionPaid || !STATUS.includes(st)) { renderOrders(); return; }
+  try { await updateDoc(doc(db, "agentOrders", id), { status: st }); toast("Status diubah: " + st); }
+  catch (err) { toast("Gagal: " + (err.code || err.message)); }
 }
 function renderOrders(){
   const l = $("oList"); l.textContent = "";
@@ -684,13 +672,9 @@ function renderOrders(){
     i.append(h, el("p", "", o.prod + " | " + rp(o.total) + " | Komisi " + rp(cm(o)) + " (" + pct(o.commissionPct) + ")" + (when ? " | " + when : "")));
     if (o.note) i.append(el("p", "", o.note));
     const a = el("div", "row"), sel = el("select"); sel.style.width = "auto";
-    if (!o.commissionPaid) {
-      if (o.paid) a.append(mkBtn("Batalkan lunas", () => { if (confirm("Batalkan status lunas dan kembalikan stok?")) undoPaid(id, "Menunggu Pembayaran"); }));
-      else if (o.status !== "Batal") a.append(mkBtn("Tandai lunas", () => markPaid(id), "primary"));
-    }
-    STATUS.forEach(x => { const op = el("option", "", x); op.value = x; sel.append(op); }); sel.value = o.status; sel.disabled = !!o.commissionPaid; sel.onchange = () => setStatus(id, sel.value);
+    if (!STATUS.includes(o.status)) { const current = el("option", "", o.status); current.value = o.status; sel.append(current); }
+    STATUS.forEach(x => { const op = el("option", "", x); op.value = x; sel.append(op); }); sel.value = o.status; sel.disabled = !o.paid || !!o.commissionPaid || o.status === "Batal"; sel.onchange = () => setStatus(id, sel.value);
     a.append(sel);
-    if (o.phone) { const n = cleanWa(o.phone); a.append(mkBtn("WhatsApp", () => window.open("https://wa.me/" + n + "?text=" + encodeURIComponent("Halo " + o.name + ", pesanan " + o.prod + " (" + rp(o.total) + ") dari " + me.name + ". Terima kasih!"), "_blank", "noopener"))); }
     r.append(sg, i, a); l.append(r);
   });
 }
