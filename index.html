@@ -343,7 +343,7 @@ const pct = n => (Math.round(Number(n || 0) * 100) / 100) + "%";
 /* Alamat website tokomu yang sudah online (hosting), tanpa garis miring di akhir. Contoh: "https://database-e5b59.web.app"
    Kosongkan hanya jika file dibuka dari server yang sama. Jika file dibuka dari komputer (file:///...), WAJIB diisi
    supaya link toko/portal yang dibagikan bisa dibuka orang lain. */
-const PUBLIC_URL = "";
+const PUBLIC_URL = "https://tokokumitra.web.app";
 const pageUrl = f => PUBLIC_URL ? PUBLIC_URL.replace(/\/+$/, "") + "/" + f : new URL(f, location.href).href;
 const siteBase = () => pageUrl("tokoku.html");
 
